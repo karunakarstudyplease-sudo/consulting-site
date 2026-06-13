@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dr. Satish IRSE | Strategic Guidance Portal</title>
+    <title>Dr. Satish IRSE | Premium Educational Portal</title>
     <style>
         * {
             margin: 0;
@@ -21,7 +21,7 @@
             align-items: center;
         }
         
-        /* Navigation System */
+        /* Premium Navigation Bar */
         nav {
             display: flex;
             gap: 10px;
@@ -54,7 +54,7 @@
         }
 
         .container {
-            max-width: 720px;
+            max-width: 700px;
             width: 100%;
             background: rgba(15, 23, 42, 0.6);
             backdrop-filter: blur(20px);
@@ -65,7 +65,7 @@
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
         }
 
-        /* Page Layout Frames */
+        /* Page Management System */
         .page {
             display: none;
         }
@@ -78,33 +78,20 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Profile Photo CSS */
-        .avatar-container {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .avatar {
-            width: 130px;
-            height: 130px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 3px solid #38bdf8;
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
-        }
-
+        /* Typography & Custom Elements */
         h1 {
-            font-size: 32px;
+            font-size: 34px;
             font-weight: 800;
-            line-height: 1.25;
+            line-height: 1.2;
             margin-bottom: 16px;
-            background: linear-gradient(to right, #ffffff, #cbd5e1);
+            background: linear-gradient(to right, #ffffff, #94a3b8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         h2 {
-            font-size: 22px;
+            font-size: 20px;
             color: #38bdf8;
-            margin-bottom: 18px;
+            margin-bottom: 15px;
             font-weight: 700;
         }
         p {
@@ -113,33 +100,33 @@
             line-height: 1.6;
             margin-bottom: 20px;
         }
-
-        /* Fact Cards */
-        .fact-card {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 18px;
-            border-radius: 14px;
-            margin-bottom: 14px;
-        }
-        .fact-card h4 {
-            color: #f8fafc;
-            font-size: 16px;
-            margin-bottom: 6px;
-        }
-
         .story-box {
             background: rgba(239, 68, 68, 0.05);
-            border: 1px solid rgba(239, 68, 68, 0.15);
-            padding: 26px;
-            border-radius: 20px;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 24px;
+            border-radius: 16px;
             margin-top: 20px;
         }
         .story-box h3 {
             color: #ef4444;
-            margin-bottom: 10px;
-            font-size: 17px;
+            margin-bottom: 8px;
+            font-size: 16px;
         }
+        .credentials-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            margin-bottom: 25px;
+        }
+        .cred-item {
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+        .cred-item span { color: #38bdf8; font-weight: bold; margin-right: 6px; }
         
         .btn {
             display: block;
@@ -153,7 +140,8 @@
             font-weight: 600;
             box-shadow: 0 4px 20px rgba(79, 70, 229, 0.3);
             transition: all 0.2s ease;
-            margin-top: 25px;
+            margin-top: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .btn:hover { transform: translateY(-2px); }
 
@@ -164,56 +152,48 @@
             color: #64748b;
         }
         .footer-credit a { color: #38bdf8; text-decoration: none; font-weight: 500; }
+        @media (max-width: 480px) { .credentials-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
 
     <nav>
         <button class="active" onclick="switchPage('home')">Guidance</button>
-        <button onclick="switchPage('insights')">Analysis Details</button>
-        <button onclick="switchPage('story')">The Reality Check</button>
+        <button onclick="switchPage('about')">About Dr. Satish</button>
+        <button onclick="switchPage('story')">The Reality</button>
     </nav>
 
     <div class="container">
         
         <div id="home" class="page active">
-            <div class="avatar-container">
-                <img class="avatar" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=250" alt="Dr. Satish IRSE">
-            </div>
-            <h1 style="text-align: center;">Raw Realities & Strategic Roadmaps for Student Success.</h1>
-            <p style="text-align: center;">Cut through corporate education hunting traps, tier-1 engineering selection blunders, and complex counseling patterns with data-driven mentoring built over 25 years by Dr. Satish IRSE.</p>
+            <h1>Raw Realities & Strategic Roadmaps for Student Success.</h1>
+            <p>Cut through the confusion of corporate career placement traps, tier-1 engineering branch selection, and complex board deadlines with data-driven mentoring built over 25 years.</p>
             
+            <div class="credentials-grid">
+                <div class="cred-item"><span>•</span> M.E. from IIT</div>
+                <div class="cred-item"><span>•</span> MBA from ISB</div>
+                <div class="cred-item"><span>•</span> UPSC Civil Services AIR 179</div>
+                <div class="cred-item"><span>•</span> GATE All India Rank 4</div>
+            </div>
+
             <a href="https://cal.com/dr-satish-irse/15min" class="btn">Book a One-on-One Consultation</a>
         </div>
 
-        <div id="insights" class="page">
-            <h2>Critical Realities Exposed on YouTube</h2>
-            <p>Dr. Satish IRSE's regular educational deep-dives on YouTube address structural issues within the selection systems that standard consultancy groups mask behind placement metrics:</p>
-            
-            <div class="fact-card">
-                <h4>The Artificial Intelligence Era Blueprint</h4>
-                <p style="margin-bottom: 0;">A basic degree alone is safe no longer. Success in modern technical hiring requires pairing structured degree fundamentals directly with verified, industry-grade portfolio projects.</p>
-            </div>
-
-            <div class="fact-card">
-                <h4>The Local Campus Branch Myth</h4>
-                <p style="margin-bottom: 0;">Securing a high-demand branch title at a standard local private tier-3 institute offers very little market advantage if the core technical competence isn't built actively outside classroom hours.</p>
-            </div>
-
-            <div class="fact-card">
-                <h4>Counseling Traps & Institutional Triggers</h4>
-                <p style="margin-bottom: 0;">Navigating complex allotment steps blindly during high-pressure JoSAA or local board windows regularly forces top-ranking aspirants into developmental dead-ends.</p>
-            </div>
+        <div id="about" class="page">
+            <h2>The Profile of Dr. Satish IRSE</h2>
+            <p>Dr. Satish IRSE has emerged as one of the most reliable educational analysts across YouTube and global discussion panels. Known for exposing systemic educational marketing scams, he offers raw, transparent facts regarding actual placements, branch values, and the mental burden students face.</p>
+            <p>Holding credentials that rank at the absolute apex of Indian academia—including a top-tier GATE rank, an engineering postgraduate degree from an IIT, an MBA from the Indian School of Business (ISB), and top ranks in national Engineering and Civil Services—he has mentored more than 300,000+ career trajectories.</p>
+            <p>His mentoring focuses strictly on long-term logical concept building rather than temporary, high-stress cramming mechanics.</p>
         </div>
 
         <div id="story" class="page">
-            <h2>The Cost of Unstructured Choices</h2>
-            <p>This customized system architecture was engineered and manually compiled from scratch by a student currently localized on a Tier-3 engineering campus.</p>
+            <h2>The Cost of Bad Guidance</h2>
+            <p>This entire educational portal wasn't created by a big design agency or a corporate sponsor. It was written and custom-coded from scratch by a student who is currently navigating a Tier-3 engineering college(most probably).</p>
             
             <div class="story-box">
-                <h3>A Statement from the Developer:</h3>
+                <h3>A Note From The Developer:</h3>
                 <p style="color: #cbd5e1; font-style: italic; margin-bottom: 0;">
-                    "When I was laying down my original intermediate stream foundations, designing my high school roadmap, and balancing exam targets, I lacked transparent guidance. I followed the common industry trends, falling right into the institutional traps that catch thousands of students annually. If I had understood the raw truths shared by Dr. Satish IRSE during my stream selection phase, I could have engineered a more secure academic path. I developed this portal so that other aspirants can read genuine, factual analyses before systemic roadblocks lead to lifelong path regret."
+                    "When I was preparing, mapping out my high school PCMB streams, and trying to handle competitive exams, I lacked structured, realistic guidance. I fell into the classic traps and systemic confusion that thousands face every year. If I had known Dr. Satish Irse's strategic blueprints back then, I would have avoided the critical roadmap errors that I deeply regret today. I built this site so other students can connect with genuine analysis before it's too late."
                 </p>
             </div>
         </div>
