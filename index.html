@@ -1,427 +1,208 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dr. Satish IRSE | Advanced Career Analytics Portal</title>
-    <style>
-        :root {
-            --bg-base: #020617;
-            --bg-surface: #0f172a;
-            --bg-element: #1e293b;
-            --accent: #38bdf8;
-            --accent-glow: rgba(56, 189, 248, 0.15);
-            --text-main: #f8fafc;
-            --text-muted: #64748b;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-        }
+"use client";
+import React, { useState, useEffect, useRef } from 'react';
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
+// A collection of logic / IQ puzzles for the game loop
+const PUZZLES = [
+  {
+    id: 1,
+    question: "Complete the logical sequence: 2, 6, 12, 20, 30, ?",
+    options: ["36", "40", "42", "46"],
+    correct: "42" // Rule: x^2 + x or +4, +6, +8, +10, +12
+  },
+  {
+    id: 2,
+    question: "Which shape completes the rule: Matrix rotates 90° clockwise each step. If step 3 points Left, step 4 points...",
+    options: ["Up", "Down", "Right", "Left"],
+    correct: "Up"
+  },
+  {
+    id: 3,
+    question: "If Every Bleep is a Bloop, and Half of Bloops are Blips, are all Bleeps definitely Blips?",
+    options: ["Yes, absolutely", "No, not necessarily", "Never", "Depends on the day"],
+    correct: "No, not necessarily"
+  },
+  {
+    id: 4,
+    question: "Find the odd one out in this pattern set:",
+    options: ["A) 343 (7³)", "B) 216 (6³)", "C) 125 (5³)", "D) 100 (10²)"],
+    correct: "D) 100 (10²)"
+  }
+];
 
-        body {
-            background-color: var(--bg-base);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            overflow-x: hidden;
-        }
+export default function MultiplayerIQGame() {
+  // Setup States
+  const [roomCode, setRoomCode] = useState('');
+  const [playerName, setPlayerName] = useState('');
+  const [isJoined, setIsJoined] = useState(false);
+  
+  // Game States
+  const [players, setPlayers] = useState({}); // { name: score }
+  const [currentPuzzleIdx, setCurrentPuzzleIdx] = useState(0);
+  const [winnerMessage, setWinnerMessage] = useState('');
+  
+  const ws = useRef(null);
 
-        /* Advanced Left Dashboard Sidebar */
-        aside {
-            width: 260px;
-            background-color: var(--bg-surface);
-            border-right: 1px solid rgba(255, 255, 255, 0.05);
-            display: flex;
-            flex-direction: column;
-            padding: 24px;
-            position: fixed;
-            height: 100vh;
-            z-index: 10;
-        }
+  // Connect to the real-time server layer
+  const joinRoom = (e) => {
+    e.preventDefault();
+    if (!roomCode || !playerName) return alert("Fill in Room Code and Name!");
 
-        .brand {
-            font-size: 18px;
-            font-weight: 800;
-            letter-spacing: 0.05em;
-            color: var(--text-main);
-            margin-bottom: 40px;
-            display: flex;
-            flex-direction: column;
-        }
+    // Using a public dev PartyKit room as a zero-config real-time sync layer
+    const cleanRoom = roomCode.trim().toLowerCase();
+    const socketUrl = `wss://iq-game-sync.karunakar.partykit.dev/parties/main/${cleanRoom}`;
+    
+    ws.current = new WebSocket(socketUrl);
 
-        .brand span {
-            font-size: 11px;
-            color: var(--accent);
-            text-transform: uppercase;
-            font-weight: 600;
-            margin-top: 4px;
-        }
+    ws.current.onopen = () => {
+      setIsJoined(true);
+      // Announce yourself to the room
+      sendMessage({ type: 'JOIN', name: playerName });
+    };
 
-        .nav-links {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            flex-grow: 1;
-        }
+    ws.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      
+      switch (data.type) {
+        case 'STATE_UPDATE':
+          // Sync active players and scores across everyone's screens
+          setPlayers(data.players);
+          setCurrentPuzzleIdx(data.currentPuzzleIdx);
+          if (data.winner) {
+            setWinnerMessage(`${data.winner} got the last one right!`);
+            setTimeout(() => setWinnerMessage(''), 3000);
+          }
+          break;
+        default:
+          break;
+      }
+    };
 
-        .nav-links button {
-            background: none;
-            border: none;
-            text-align: left;
-            padding: 14px 18px;
-            border-radius: 12px;
-            color: #94a3b8;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
+    ws.current.onclose = () => {
+      alert("Disconnected from game server. Try reloading.");
+      setIsJoined(false);
+    };
+  };
 
-        .nav-links button:hover {
-            background: rgba(255, 255, 255, 0.02);
-            color: var(--text-main);
-        }
+  const sendMessage = (msg) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify(msg));
+    }
+  };
 
-        .nav-links button.active {
-            background: var(--accent-glow);
-            color: var(--accent);
-            border-left: 3px solid var(--accent);
-            border-radius: 0 12px 12px 0;
-        }
+  const handleAnswerSubmit = (selectedOption) => {
+    const currentPuzzle = PUZZLES[currentPuzzleIdx];
+    if (selectedOption === currentPuzzle.correct) {
+      // Broadcast that you answered correctly first
+      sendMessage({
+        type: 'SCORE_POINT',
+        name: playerName,
+        nextPuzzleIdx: (currentPuzzleIdx + 1) % PUZZLES.length
+      });
+    } else {
+      alert("Wrong answer! Lose 5 seconds.");
+    }
+  };
 
-        /* Main Dashboard Window Content */
-        main {
-            margin-left: 260px;
-            flex-grow: 1;
-            padding: 40px;
-            max-width: 1200px;
-        }
+  // UI Setup: Join Form
+  if (!isJoined) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-800 p-8 rounded-xl shadow-2xl border border-slate-700">
+          <h1 className="text-3xl font-black text-center tracking-tight mb-2 text-indigo-400">🧠 IQ MATRIX</h1>
+          <p className="text-slate-400 text-sm text-center mb-6">Real-time competitive multiplayer logic race.</p>
+          
+          <form onSubmit={joinRoom} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Your Name</label>
+              <input 
+                type="text" 
+                maxLength="12"
+                placeholder="e.g., Karunakar" 
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded p-2.5 text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Room Code</label>
+              <input 
+                type="text" 
+                maxLength="6"
+                placeholder="e.g., XQZT" 
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded p-2.5 text-white uppercase font-mono tracking-widest focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <button 
+              type="submit" 
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded transition-all shadow-lg shadow-indigo-600/20"
+            >
+              Enter Game Lobby
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
-        .page {
-            display: none;
-        }
+  // UI Setup: Live Game Arena
+  const activePuzzle = PUZZLES[currentPuzzleIdx];
 
-        .page.active {
-            display: block;
-            animation: paneFade 0.3s ease-out forwards;
-        }
+  return (
+    <div className="min-h-screen bg-slate-900 text-white p-4 md:p-8 grid grid-cols-1 lg:grid-cols-4 gap-6">
+      
+      {/* Left Column: Real-time Live Leaderboard */}
+      <div className="lg:col-span-1 bg-slate-800 p-6 rounded-xl border border-slate-700 h-fit">
+        <h2 className="text-xl font-bold border-b border-slate-700 pb-3 text-indigo-400">👥 Lobby: {roomCode.toUpperCase()}</h2>
+        <div className="mt-4 space-y-2">
+          {Object.entries(players).map(([name, score]) => (
+            <div 
+              key={name} 
+              className={`flex justify-between items-center p-2.5 rounded text-sm font-semibold ${name === playerName ? 'bg-indigo-600/20 border border-indigo-500' : 'bg-slate-950'}`}
+            >
+              <span>{name} {name === playerName && "(You)"}</span>
+              <span className="bg-indigo-900 text-indigo-200 px-2.5 py-0.5 rounded-full text-xs">{score} pts</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
-        @keyframes paneFade {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Analytical Cards Grid */
-        .analytics-strip {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 35px;
-        }
-
-        .stat-card {
-            background: var(--bg-surface);
-            border: 1px solid rgba(255, 255, 255, 0.03);
-            padding: 24px;
-            border-radius: 16px;
-        }
-
-        .stat-card h3 {
-            font-size: 28px;
-            font-weight: 800;
-            color: var(--accent);
-            margin-bottom: 4px;
-        }
-
-        .stat-card p {
-            font-size: 13px;
-            color: #94a3b8;
-            font-weight: 500;
-        }
-
-        h1 {
-            font-size: 36px;
-            font-weight: 900;
-            letter-spacing: -0.02em;
-            margin-bottom: 12px;
-            line-height: 1.2;
-        }
-
-        .lead-text {
-            font-size: 16px;
-            color: #94a3b8;
-            margin-bottom: 40px;
-            max-width: 800px;
-            line-height: 1.6;
-        }
-
-        h2 {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 20px;
-            color: var(--text-main);
-        }
-
-        /* Matrix Grid Design */
-        .matrix-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-        }
-
-        .matrix-card {
-            background: var(--bg-surface);
-            border: 1px solid rgba(255, 255, 255, 0.04);
-            padding: 30px;
-            border-radius: 20px;
-            transition: border-color 0.2s;
-        }
-
-        .matrix-card:hover {
-            border-color: rgba(56, 189, 248, 0.2);
-        }
-
-        .matrix-card h4 {
-            font-size: 17px;
-            color: var(--text-main);
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .matrix-card h4 span {
-            color: var(--accent);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
+      {/* Right Column: Dynamic Question Engine */}
+      <div className="lg:col-span-3 flex flex-col justify-between bg-slate-800 p-6 md:p-8 rounded-xl border border-slate-700 relative overflow-hidden">
         
-        .matrix-card h4 span.alert-tag {
-            color: var(--danger);
-        }
+        {/* Banner for displaying real-time winners */}
+        {winnerMessage && (
+          <div className="absolute top-0 left-0 right-0 bg-emerald-600 text-white text-center py-2 text-xs font-bold uppercase tracking-widest animate-pulse">
+            {winnerMessage}
+          </div>
+        )}
 
-        .matrix-card p {
-            font-size: 14px;
-            color: #94a3b8;
-            line-height: 1.6;
-        }
+        <div className="my-auto max-w-2xl mx-auto w-full py-6">
+          <span className="text-xs bg-slate-700 text-slate-300 font-mono px-2.5 py-1 rounded">MATRIX QUESTION #{activePuzzle.id}</span>
+          <h3 className="text-xl md:text-2xl font-medium mt-4 leading-relaxed text-slate-100">
+            {activePuzzle.question}
+          </h3>
 
-        /* Action Controls */
-        .btn-action {
-            display: inline-block;
-            background: linear-gradient(90deg, #2563eb, #3b82f6);
-            color: white;
-            padding: 16px 32px;
-            border-radius: 12px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 15px;
-            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.25);
-            transition: all 0.2s;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            margin-top: 15px;
-        }
-
-        .btn-action:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.35);
-        }
-
-        /* Dev Narrative Framework */
-        .manifesto-box {
-            background: rgba(239, 68, 68, 0.02);
-            border: 1px solid rgba(239, 68, 68, 0.15);
-            padding: 35px;
-            border-radius: 24px;
-            position: relative;
-            margin-bottom: 25px;
-        }
-
-        .manifesto-box h3 {
-            color: var(--danger);
-            font-size: 18px;
-            margin-bottom: 15px;
-            font-weight: 700;
-        }
-
-        .manifesto-box p {
-            font-size: 15px;
-            color: #cbd5e1;
-            line-height: 1.7;
-        }
-
-        .scholarship-badge {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            padding: 20px;
-            border-radius: 16px;
-            margin-top: 20px;
-        }
-
-        .scholarship-badge h4 {
-            color: var(--warning);
-            font-size: 15px;
-            margin-bottom: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-        }
-
-        .footer-tag {
-            margin-top: 50px;
-            font-size: 12px;
-            color: #475569;
-            border-top: 1px solid rgba(255, 255, 255, 0.03);
-            padding-top: 20px;
-        }
-
-        .footer-tag a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-
-        /* Mobile/Tablet Fallback Layout */
-        @media (max-width: 900px) {
-            aside { width: 80px; padding: 20px 10px; align-items: center; }
-            .brand span, .nav-links button span.lbl { display: none; }
-            .brand { margin-bottom: 30px; font-size: 14px; }
-            .nav-links button { padding: 12px; text-align: center; }
-            main { margin-left: 80px; padding: 25px; }
-            .analytics-strip, .matrix-grid { grid-template-columns: 1fr; }
-        }
-    </style>
-</head>
-<body>
-
-    <aside>
-        <div class="brand">
-            DR. SATISH IRSE
-            <span>Strategic Hub</span>
-        </div>
-        <div class="nav-links">
-            <button class="active" onclick="showPane('home_pane')"><span class="lbl">Dashboard</span></button>
-            <button onclick="showPane('matrix_pane')"><span class="lbl">Reality Matrix</span></button>
-            <button onclick="showPane('profile_pane')"><span class="lbl">The Timeline</span></button>
-            <button onclick="showPane('regret_pane')"><span class="lbl">Dev Manifesto</span></button>
-        </div>
-    </aside>
-
-    <main>
-        
-        <div id="home_pane" class="page active">
-            <div class="analytics-strip">
-                <div class="stat-card">
-                    <h3>300K+</h3>
-                    <p>Aspirants Mentored</p>
-                </div>
-                <div class="stat-card">
-                    <h3>AIR 4</h3>
-                    <p>GATE Competence</p>
-                </div>
-                <div class="stat-card">
-                    <h3>AIR 25</h3>
-                    <p>Engineering Services</p>
-                </div>
-            </div>
-
-            <h1>Uncompromised Academic Architecture.</h1>
-            <p class="lead-text">Exposing systemic counseling faults and corporate educational placement traps. Building metric-driven, bulletproof engineering roadmaps that protect students from market automation realities.</p>
-            
-            <h2>Secure an Analytical Evaluation</h2>
-            <p class="lead-text" style="margin-bottom: 20px;">Schedule a direct, 15-minute diagnostic intake. Map out targeted tracking variables across JoSAA, tier-1 branch selections, and cross-stream milestones.</p>
-            <a href="https://cal.com/dr-satish-irse/15min" class="btn-action">Request Session Evaluation</a>
+          {/* Grid layout options */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+            {activePuzzle.options.map((option, i) => (
+              <button
+                key={i}
+                onClick={() => handleAnswerSubmit(option)}
+                className="w-full bg-slate-950 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 text-left font-medium transition-all hover:scale-[1.01] active:scale-[0.99]"
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div id="matrix_pane" class="page">
-            <h1>The Strategic Reality Matrix</h1>
-            <p class="lead-text">The raw, data-backed principles extracted directly from Dr. Satish IRSE's algorithmic career analysis frameworks.</p>
-            
-            <div class="matrix-grid">
-                <div class="matrix-card">
-                    <h4>The EAPCET Structural Deficit <span class="alert-tag">• Infrastructure Alert</span></h4>
-                    <p>Dr. Satish explicitly warns against the vast majority of local EAPCET state colleges. Beyond the glossy marketing brochures, the baseline reality consists of outdated or completely non-functional laboratories, zero meaningful institutional R&D funding, and severe faculty deficits where primary instruction is outsourced to underpaid, non-research-active staff.</p>
-                </div>
-                <div class="matrix-card">
-                    <h4>The Portfolio Imperative <span>• Technology</span></h4>
-                    <p>In the automated AI landscape, holding a computer science seat at an unverified tier-3 institute provides zero structural leverage. High-tier placement requires immediate engineering of technical portfolio blocks outside basic classroom bounds.</p>
-                </div>
-                <div class="matrix-card">
-                    <h4>The Tier-3 Trap <span>• Local Campus</span></h4>
-                    <p>Local state private colleges survive entirely on generic marketing optics. Blindly entering these systems without a sharp, self-driven core development trajectory leads straight to placement displacement.</p>
-                </div>
-                <div class="matrix-card">
-                    <h4>Allotment Vulnerabilities <span>• Counseling</span></h4>
-                    <p>Thousands of elite engineering candidates destroy their academic equity during intense JoSAA windows simply by misinterpreting choice-filling hierarchy structures. Optimization is mandatory.</p>
-                </div>
-            </div>
+        <div className="border-t border-slate-700 pt-4 flex justify-between text-xs text-slate-500 font-mono">
+          <span>Connected via WebSocket WebSocket Layer</span>
+          <span>Status: Synchronized Live</span>
         </div>
-
-        <div id="profile_pane" class="page">
-            <h1>Academic Mastery Breakdown</h1>
-            <p class="lead-text">A profile structured over decades of elite execution at the highest levels of the Indian educational and civil sectors.</p>
-            
-            <div class="matrix-grid">
-                <div class="matrix-card">
-                    <h4>Postgraduate Foundation</h4>
-                    <p>Master of Engineering (M.E.) credential from the Indian Institute of Technology (IIT).</p>
-                </div>
-                <div class="matrix-card">
-                    <h4>Strategic Management</h4>
-                    <p>Master of Business Administration (MBA) from the Indian School of Business (ISB).</p>
-                </div>
-                <div class="matrix-card">
-                    <h4>National Governance</h4>
-                    <p>UPSC Civil Services Selection with an All India Rank of 179.</p>
-                </div>
-                <div class="matrix-card">
-                    <h4>Technical Authority</h4>
-                    <p>Rank 25 in the Indian Engineering Services (IES) and Rank 4 nationwide in the GATE framework.</p>
-                </div>
-            </div>
-        </div>
-
-        <div id="regret_pane" class="page">
-            <h1>The Cost of Unverified Strategy</h1>
-            <p class="lead-text">This portal was engineered entirely outside commercial corporate frameworks by an independent student currently navigating critical transitional crossroads.</p>
-            
-            <div class="manifesto-box">
-                <h3>The Creator's Crossroads:</h3>
-                <p>
-                    "When I was laying down my original intermediate stream foundations, choosing my PCMB parameters, and wrestling with competitive test frameworks, I had zero structural transparency. I ran after traditional narratives and fell right into the institutional traps that compromise thousands of high school careers every single year.<br><br>
-                    I hand-coded this advanced analytical interface out of real personal regret—wishing I had been exposed to the raw, data-centered truths and branch architecture provided by Dr. Satish IRSE back when I was planning my high school stream setup, so I could have protected my academic trajectory."
-                </p>
-
-                <div class="scholarship-badge">
-                    <h4>Live Trajectory Tracking Variable:</h4>
-                    <p style="color: #cbd5e1; font-style: italic;">
-                        "The raw irony is that while gemini engineered this engine to highlight these traps, I am currently facing them firsthand. My primary objective is the global infrastructure of the <strong>IIT Madras Zanzibar international campus</strong>. However, if the critical 50% merit-scholarship threshold is not cleared, financial realities mean I will unfortunately be forced to step onto a local EAPCET state campus—the exact ecosystem Dr. Satish warns lacks functional labs, proper infrastructure, or R&D faculty depth. This portal serves as my live battlefield data tracker."
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <div class="footer-tag">
-            Correction was done by and system engineered by 
-            <a href="https://www.reddit.com/user/primordial-being-33" target="_blank">u/primordial-being-33</a>
-        </div>
-
-    </main>
-
-    <script>
-        function showPane(paneId) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('aside button').forEach(b => b.classList.remove('active'));
-            
-            document.getElementById(paneId).classList.add('active');
-            event.currentTarget.classList.add('active');
-        }
-    </script>
-
-</body>
-</html>
+      </div>
+    </div>
+  );
+}
