@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Realtime Multiplayer IQ Duel</title>
+    <title>Advanced Live IQ Arena</title>
     <style>
         :root {
-            --bg: #0f172a;
-            --surface: #1e293b;
+            --bg: #020617;
+            --surface: #0f172a;
+            --element: #1e293b;
             --accent: #38bdf8;
             --success: #22c55e;
             --danger: #ef4444;
             --text: #f8fafc;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
         body {
             background-color: var(--bg);
             color: var(--text);
@@ -24,169 +25,178 @@
             justify-content: center;
             padding: 20px;
         }
-        .setup-box, .game-box {
+        .panel {
             background: var(--surface);
-            padding: 30px;
-            border-radius: 20px;
-            max-width: 500px;
+            padding: 40px;
+            border-radius: 24px;
+            max-width: 600px;
             width: 100%;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            border: 1px solid rgba(255,255,255,0.05);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
-        .game-box { display: none; }
-        h1 { font-size: 24px; margin-bottom: 15px; text-align: center; color: var(--accent); }
-        input, button {
-            width: 100%;
-            padding: 14px;
-            margin-top: 12px;
-            border-radius: 10px;
-            border: none;
-            font-size: 16px;
-            font-weight: 600;
-        }
-        input { background: #334155; color: white; text-align: center; }
-        button { background: var(--accent); color: #020617; cursor: pointer; transition: 0.2s; }
-        button:hover { opacity: 0.9; transform: translateY(-1px); }
-        .score-board {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #334155;
-        }
-        .options-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 20px; }
-        .option-btn { background: #334155; color: white; text-align: left; }
-        .option-btn:hover { background: #475569; }
-        #status-msg { margin-top: 15px; text-align: center; font-style: italic; color: #94a3b8; }
+        .view { display: none; }
+        .view.active { display: block; }
+        h1 { font-size: 28px; font-weight: 800; text-align: center; margin-bottom: 20px; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        label { display: block; margin-top: 15px; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--accent); letter-spacing: 0.05em; }
+        input, select, button { width: 100%; padding: 16px; margin-top: 8px; border-radius: 12px; border: none; font-size: 15px; font-weight: 600; }
+        input, select { background: var(--element); color: white; border: 1px solid rgba(255,255,255,0.05); }
+        button { background: linear-gradient(90deg, #2563eb, #3b82f6); color: white; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(37,99,235,0.2); }
+        button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.3); }
+        .score-banner { display: flex; justify-content: space-between; background: var(--element); padding: 15px 20px; border-radius: 12px; margin-bottom: 25px; border: 1px solid rgba(255,255,255,0.05); }
+        .options-stack { display: flex; flex-direction: column; gap: 12px; margin-top: 25px; }
+        .opt-btn { background: var(--element); color: white; text-align: left; border: 1px solid rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; cursor: pointer; font-size: 15px; transition: all 0.2s; }
+        .opt-btn:hover { background: #24334d; border-color: var(--accent); }
+        .difficulty-badge { display: inline-block; padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; text-transform: uppercase; background: rgba(56,189,248,0.1); color: var(--accent); margin-bottom: 15px; }
+        #status-lbl { margin-top: 20px; text-align: center; font-size: 14px; font-style: italic; color: #64748b; }
     </style>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
-    <div id="setup-screen" class="setup-box">
-        <h1>IQ Multiplayer Duel</h1>
-        <p style="text-align: center; color: #94a3b8; font-size: 14px;">Create or join a room code to play live with a friend.</p>
-        <input type="text" id="room-input" placeholder="Enter Room Code (e.g., IQ99)">
-        <button id="start-btn" onclick="initConnection()">Connect & Start Game</button>
-    </div>
+    <div class="panel">
+        
+        <div id="lobby-view" class="view active">
+            <h1>IQ Arena Matchmaking</h1>
+            
+            <label>Select Matrix Difficulty</label>
+            <select id="difficulty-select">
+                <option value="easy">Normal Logic (Baseline)</option>
+                <option value="medium">Advanced Matrix (Tier-1 Standard)</option>
+                <option value="hard">Quantum IQ (Extreme Traps)</option>
+            </select>
 
-    <div id="game-screen" class="game-box">
-        <div class="score-board">
-            <div>You: <span id="my-score">0</span></div>
-            <div>Opponent: <span id="opp-score">0</span></div>
+            <label>Room Allocation Code</label>
+            <input type="text" id="room-code-input" placeholder="Enter custom room identifier">
+            
+            <button onclick="joinRoom('player1')" style="margin-top: 25px;">Create Room as Player 1</button>
+            <button onclick="joinRoom('player2')" style="background: #1e293b; border: 1px solid rgba(255,255,255,0.1); margin-top: 10px;">Join Room as Player 2</button>
         </div>
-        <h2 id="question-text">Loading IQ Question...</h2>
-        <div class="options-grid" id="options-container">
+
+        <div id="game-view" class="view">
+            <div class="score-banner">
+                <div>P1 Score: <span id="p1-score-lbl">0</span></div>
+                <div id="room-identity-lbl" style="color: var(--accent); font-weight: 700;">ROOM</div>
+                <div>P2 Score: <span id="p2-score-lbl">0</span></div>
             </div>
-        <p id="status-msg">Waiting for opponent to connect...</p>
+
+            <div class="difficulty-badge" id="diff-tag">MEDIUM</div>
+            <h2 id="question-payload-lbl">Fetching generation variables...</h2>
+
+            <div class="options-stack" id="options-box">
+                </div>
+            <p id="status-lbl">Analyze the variables carefully...</p>
+        </div>
+
     </div>
 
     <script>
-        let peer = null;
-        let conn = null;
-        let myScore = 0;
-        let oppScore = 0;
-        let currentQuestionIndex = 0;
+        // LIVE PRODUCTION ENDPOINTS CONNECTED
+        const SUPABASE_URL = "https://dwjgilfxstogojdepbdh.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3amdpbGZ4c3RvZ29qZGVwYmRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIzNjE3MjQsImV4cCI6MjA1NzkzNzcyNH0.b04rF5q8wZf6p9_rU4-Dby735h_C6b62P4vR0E6_3mE";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        const questions = [
-            { q: "If all Bloops are Razzies and all Razzies are Lallos, are all Bloops definitely Lallos?", a: ["Yes", "No", "Cannot be determined"], correct: 0 },
-            { q: "Which number comes next in the logic sequence: 2, 4, 8, 16, ...?", a: ["20", "24", "32", "64"], correct: 2 },
-            { q: "A bat and ball cost ₹110 in total. The bat costs ₹100 more than the ball. How much does the ball cost?", a: ["₹10", "₹5", "₹0", "₹55"], correct: 1 }
-        ];
+        let currentRoom = null;
+        let myRole = null;
+        let currentDifficulty = 'medium';
 
-        function initConnection() {
-            const roomId = document.getElementById('room-input').value.trim();
-            if(!roomId) return alert("Please type a room code!");
+        const questionPool = {
+            easy: [
+                { q: "Complete the numerical string parameters: 3, 6, 12, 24, (?)", a: ["30", "36", "48", "96"], c: 2 },
+                { q: "Light is to shadow as Truth is to what variable?", a: ["Fact", "Deception", "Knowledge", "Reality"], c: 1 }
+            ],
+            medium: [
+                { q: "If all algorithmic tracks are matrix streams, and all matrix streams are prone to automation, are all algorithmic tracks prone to automation?", a: ["Always true", "Never true", "Conditionally valid", "Insufficient parameters"], c: 0 },
+                { q: "A specialized tech portfolio takes 5 weeks to mature. If its development speed doubles every week, when was it exactly half complete?", a: ["Week 2.5", "Week 4", "Week 1", "Week 3.5"], c: 1 }
+            ],
+            hard: [
+                { q: "A structural allocation system has a 10% structural failure margin. If combined with a local EAPCET tier-3 infrastructure framework, the compound risk index triples. What is the active success percentage parameter?", a: ["70%", "90%", "30%", "0%"], c: 0 }
+            ]
+        };
 
-            document.getElementById('start-btn').innerText = "Connecting...";
+        async function joinRoom(role) {
+            const roomCode = document.getElementById('room-code-input').value.trim();
+            currentDifficulty = document.getElementById('difficulty-select').value;
+            if(!roomCode) return alert("Allocation code mandatory.");
+            myRole = role;
 
-            // Connect to a free, public cloud signaling engine
-            peer = new Peer(roomId + '-player-' + Math.floor(Math.random()*1000));
+            if(role === 'player1') {
+                await supabase.from('game_rooms').delete().eq('room_code', roomCode);
+                await supabase.from('game_rooms').insert([{ 
+                    room_code: roomCode, 
+                    player_1_score: 0, 
+                    player_2_score: 0, 
+                    current_question: 0,
+                    difficulty_tier: currentDifficulty
+                }]);
+            }
 
-            peer.on('open', (id) => {
-                // Try connecting to the companion player slot in that room
-                let targets = [roomId + '-player-1', roomId + '-player-2'];
-                let target = targets.find(t => t !== id);
-                
-                conn = peer.connect(roomId);
-                
-                // Set up incoming hooks if someone connects to us
-                peer.on('connection', (incomingConn) => {
-                    conn = incomingConn;
-                    setupReceiver();
-                });
+            currentRoom = roomCode;
+            switchActiveView('game-view');
+            document.getElementById('room-identity-lbl').innerText = roomCode.toUpperCase();
+            document.getElementById('diff-tag').innerText = currentDifficulty;
 
-                if(conn) setupReceiver();
-                
-                // Force reveal game board
-                document.getElementById('setup-screen').style.display = 'none';
-                document.getElementById('game-screen').style.display = 'block';
-                loadQuestion();
-            });
+            supabase.channel('room-sync')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `room_code=eq.${roomCode}` }, payload => {
+                updateGameState(payload.new);
+            })
+            .subscribe();
+
+            renderActiveQuestion(0);
         }
 
-        function setupReceiver() {
-            conn.on('data', (data) => {
-                if(data.type === 'ANSWERED') {
-                    if(data.isCorrect) {
-                        oppScore += 10;
-                        document.getElementById('opp-score').innerText = oppScore;
-                        document.getElementById('status-msg').innerText = "Opponent got it right! Moving on...";
-                    } else {
-                        document.getElementById('status-msg').innerText = "Opponent guessed wrong!";
-                    }
-                    setTimeout(nextQuestion, 2000);
-                }
-            });
+        function updateGameState(data) {
+            document.getElementById('p1-score-lbl').innerText = data.player_1_score;
+            document.getElementById('p2-score-lbl').innerText = data.player_2_score;
+            renderActiveQuestion(data.current_question);
         }
 
-        function loadQuestion() {
-            if(currentQuestionIndex >= questions.length) {
-                document.getElementById('question-text').innerText = "Game Over!";
-                document.getElementById('options-container').innerHTML = "";
-                document.getElementById('status-msg').innerText = myScore > oppScore ? "You win the IQ duel!" : "Opponent wins!";
+        function renderActiveQuestion(index) {
+            const pool = questionPool[currentDifficulty];
+            if(index >= pool.length) {
+                document.getElementById('question-payload-lbl').innerText = "Matrix Duel Complete.";
+                document.getElementById('options-box').innerHTML = "";
+                document.getElementById('status-lbl').innerText = "Final standings updated on database container.";
                 return;
             }
 
-            let currentQ = questions[currentQuestionIndex];
-            document.getElementById('question-text').innerText = currentQ.q;
+            const activeQ = pool[index];
+            document.getElementById('question-payload-lbl').innerText = activeQ.q;
             
-            let container = document.getElementById('options-container');
-            container.innerHTML = "";
-            document.getElementById('status-msg').innerText = "Analyze quickly...";
+            const targetBox = document.getElementById('options-box');
+            targetBox.innerHTML = "";
 
-            currentQ.a.forEach((option, index) => {
-                let btn = document.createElement('button');
-                btn.className = 'option-btn';
-                btn.innerText = option;
-                btn.onclick = () => submitAnswer(index);
-                container.appendChild(btn);
+            activeQ.a.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'opt-btn';
+                btn.innerText = opt;
+                btn.onclick = () => evaluationSelection(idx, activeQ.c, index);
+                targetBox.appendChild(btn);
             });
         }
 
-        function submitAnswer(selectedIndex) {
-            let currentQ = questions[currentQuestionIndex];
-            let isCorrect = (selectedIndex === currentQ.correct);
+        async function evaluationSelection(selected, correct, qIndex) {
+            const isCorrect = (selected === correct);
+            let updatePayload = {};
+
+            document.getElementById('options-box').innerHTML = "";
+            document.getElementById('status-lbl').innerText = "Processing live answer calculation...";
 
             if(isCorrect) {
-                myScore += 10;
-                document.getElementById('my-score').innerText = myScore;
-                document.getElementById('status-msg').innerText = "Correct! Points secured.";
-            } else {
-                document.getElementById('status-msg').innerText = "Incorrect choice.";
+                const { data } = await supabase.from('game_rooms').select().eq('room_code', currentRoom).single();
+                if(myRole === 'player1') {
+                    updatePayload.player_1_score = data.player_1_score + 10;
+                } else {
+                    updatePayload.player_2_score = data.player_2_score + 10;
+                }
             }
-
-            // Send data packet over WebSockets to opponent screen instantly
-            if(conn && conn.open) {
-                conn.send({ type: 'ANSWERED', isCorrect: isCorrect });
-            }
-
-            setTimeout(nextQuestion, 2000);
+            
+            updatePayload.current_question = qIndex + 1;
+            await supabase.from('game_rooms').update(updatePayload).eq('room_code', currentRoom);
         }
 
-        function nextQuestion() {
-            currentQuestionIndex++;
-            loadQuestion();
+        function switchActiveView(id) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
         }
     </script>
 </body>
