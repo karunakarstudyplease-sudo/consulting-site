@@ -80,10 +80,10 @@
             </div>
 
             <div class="difficulty-badge" id="diff-tag">MEDIUM</div>
-            <h2 id="question-payload-lbl">Loading Arena Configurations...</h2>
+            <h2 id="question-payload-lbl">Awaiting Synchronized Broadcast...</h2>
 
             <div class="options-stack" id="options-box"></div>
-            <p id="status-lbl">Synchronizing channels...</p>
+            <p id="status-lbl">Initializing server links...</p>
         </div>
 
     </div>
@@ -92,20 +92,13 @@
         const SUPABASE_URL = "https://dwjgilfxstogojdepbdh.supabase.co";
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3amdpbGZ4c3RvZ29qZGVwYmRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIzNjE3MjQsImV4cCI6MjA1NzkzNzcyNH0.b04rF5q8wZf6p9_rU4-Dby735h_C6b62P4vR0E6_3mE";
         
-        let supabaseClient;
-        
-        // Immediate safe fallback initialization check
-        window.onload = function() {
-            const targetLib = window.supabase || window['@supabase/supabase-js'];
-            if (targetLib) {
-                supabaseClient = targetLib.createClient(SUPABASE_URL, SUPABASE_KEY);
-            } else {
-                alert("CDN Loading Blocked by browser security extensions.");
-            }
-        };
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+            realtime: { params: { eventsPerSecond: 10 } }
+        });
 
         let currentRoom = null;
         let myRole = null;
+        let localQuestionIndex = -1;
         let currentDifficulty = 'medium';
 
         const questionPool = {
@@ -122,57 +115,71 @@
             ]
         };
 
-        function joinRoom(role) {
+        async function joinRoom(role) {
             const roomCode = document.getElementById('room-code-input').value.trim();
             currentDifficulty = document.getElementById('difficulty-select').value;
-            if(!roomCode) { alert("Room code mandatory."); return; }
+            if(!roomCode) return alert("Room code mandatory.");
             
             myRole = role;
             currentRoom = roomCode;
 
-            // CRITICAL FORCE: Instantly swap screens UI first to break freezing locks
             document.getElementById('lobby-view').classList.remove('active');
             document.getElementById('game-view').classList.add('active');
-            
             document.getElementById('room-identity-lbl').innerText = roomCode.toUpperCase();
             document.getElementById('diff-tag').innerText = currentDifficulty.toUpperCase();
-            
-            renderActiveQuestion(0);
-            executeNetworkPipeline(roomCode);
+
+            if(role === 'player1') {
+                // Completely clear and recreate the master sync state on the server
+                await supabaseClient.from('game_rooms').delete().eq('room_code', roomCode);
+                await supabaseClient.from('game_rooms').insert([{ 
+                    room_code: roomCode, 
+                    player_1_score: 0, 
+                    player_2_score: 0, 
+                    current_question: 0,
+                    difficulty_tier: currentDifficulty
+                }]);
+            }
+
+            // Bind the active live broadcast pipeline
+            setupLiveSubscription(roomCode);
         }
 
-        async function executeNetworkPipeline(roomCode) {
-            if(!supabaseClient) return;
-            
-            try {
-                if(myRole === 'player1') {
-                    await supabaseClient.from('game_rooms').delete().eq('room_code', roomCode);
-                    await supabaseClient.from('game_rooms').insert([{ 
-                        room_code: roomCode, 
-                        player_1_score: 0, 
-                        player_2_score: 0, 
-                        current_question: 0,
-                        difficulty_tier: currentDifficulty
-                    }]);
-                }
+        function setupLiveSubscription(roomCode) {
+            const channel = supabaseClient.channel(`room_${roomCode}`, {
+                config: { broadcast: { self: true } }
+            });
 
-                // Initialize real-time tracking via connection string channels
-                supabaseClient.channel(`room-${roomCode}`)
-                .on('postgres_changes', { 
-                    event: 'UPDATE', 
-                    schema: 'public', 
-                    table: 'game_rooms', 
-                    filter: `room_code=eq.${roomCode}` 
-                }, payload => {
-                    if(payload && payload.new) {
-                        document.getElementById('p1-score-lbl').innerText = payload.new.player_1_score;
-                        document.getElementById('p2-score-lbl').innerText = payload.new.player_2_score;
-                        renderActiveQuestion(payload.new.current_question);
-                    }
-                })
-                .subscribe();
-            } catch(err) {
-                console.log("Network sync background deferral.");
+            channel.on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'game_rooms', 
+                filter: `room_code=eq.${roomCode}` 
+            }, payload => {
+                if (payload && payload.new) {
+                    processStateSync(payload.new);
+                }
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    // Force poll current cloud metrics immediately on startup
+                    const { data } = await supabaseClient.from('game_rooms').select().eq('room_code', roomCode).maybeSingle();
+                    if (data) processStateSync(data);
+                }
+            });
+        }
+
+        function processStateSync(serverState) {
+            document.getElementById('p1-score-lbl').innerText = serverState.player_1_score;
+            document.getElementById('p2-score-lbl').innerText = serverState.player_2_score;
+            currentDifficulty = serverState.difficulty_tier || 'medium';
+            document.getElementById('diff-tag').innerText = currentDifficulty.toUpperCase();
+
+            let targetIndex = parseInt(serverState.current_question);
+            
+            // Fix the freeze glitch: Only update content if the cloud actually progressed steps
+            if (targetIndex !== localQuestionIndex) {
+                localQuestionIndex = targetIndex;
+                renderActiveQuestion(localQuestionIndex);
             }
         }
 
@@ -181,7 +188,7 @@
             if(index >= pool.length) {
                 document.getElementById('question-payload-lbl').innerText = "Matrix Duel Complete.";
                 document.getElementById('options-box').innerHTML = "";
-                document.getElementById('status-lbl').innerText = "Final standings completely synchronized.";
+                document.getElementById('status-lbl').innerText = "Final metrics successfully locked on server cluster.";
                 return;
             }
 
@@ -198,37 +205,32 @@
                 btn.onclick = () => evaluationSelection(idx, activeQ.c, index);
                 targetBox.appendChild(btn);
             });
-            document.getElementById('status-lbl').innerText = "Awaiting response parameters...";
+            document.getElementById('status-lbl').innerText = "Awaiting live response parameters...";
         }
 
         async function evaluationSelection(selected, correct, qIndex) {
-            const isCorrect = (selected === correct);
-            let updatePayload = {};
-
+            // Instantly blank out options to prevent multiple rapid button triggers
             document.getElementById('options-box').innerHTML = "";
-            document.getElementById('status-lbl').innerText = "Processing live parameters...";
+            document.getElementById('status-lbl').innerText = "Pushing selection state to database wire...";
 
-            if(isCorrect && supabaseClient) {
-                try {
-                    const { data } = await supabaseClient.from('game_rooms').select().eq('room_code', currentRoom).single();
-                    if(data) {
-                        if(myRole === 'player1') {
-                            updatePayload.player_1_score = parseInt(data.player_1_score || 0) + 10;
-                        } else {
-                            updatePayload.player_2_score = parseInt(data.player_2_score || 0) + 10;
-                        }
-                    }
-                } catch(e) {}
-            }
+            const isCorrect = (selected === correct);
             
-            updatePayload.current_question = qIndex + 1;
-            
-            if(supabaseClient) {
-                await supabaseClient.from('game_rooms').update(updatePayload).eq('room_code', currentRoom);
+            // SECURE TRANSACTION READ: Fetch the freshest data point directly from database to prevent overwrite lag
+            const { data } = await supabaseClient.from('game_rooms').select().eq('room_code', currentRoom).maybeSingle();
+            if (!data) return;
+
+            let updatePayload = {};
+            if (myRole === 'player1') {
+                updatePayload.player_1_score = parseInt(data.player_1_score || 0) + (isCorrect ? 10 : 0);
             } else {
-                // Local testing pipeline if network fails completely
-                renderActiveQuestion(qIndex + 1);
+                updatePayload.player_2_score = parseInt(data.player_2_score || 0) + (isCorrect ? 10 : 0);
             }
+
+            // Increment matrix step index parameter globally
+            updatePayload.current_question = qIndex + 1;
+
+            // Push the update out
+            await supabaseClient.from('game_rooms').update(updatePayload).eq('room_code', currentRoom);
         }
     </script>
 </body>
