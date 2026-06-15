@@ -68,8 +68,8 @@
             <label>Room Allocation Code</label>
             <input type="text" id="room-code-input" placeholder="Enter custom room identifier">
             
-            <button onclick="joinRoom('player1')" style="margin-top: 25px;">Create Room as Player 1</button>
-            <button onclick="joinRoom('player2')" style="background: #1e293b; border: 1px solid rgba(255,255,255,0.1); margin-top: 10px;">Join Room as Player 2</button>
+            <button id="btn-p1" onclick="joinRoom('player1')" style="margin-top: 25px;">Create Room as Player 1</button>
+            <button id="btn-p2" onclick="joinRoom('player2')" style="background: #1e293b; border: 1px solid rgba(255,255,255,0.1); margin-top: 10px;">Join Room as Player 2</button>
         </div>
 
         <div id="game-view" class="view">
@@ -82,18 +82,25 @@
             <div class="difficulty-badge" id="diff-tag">MEDIUM</div>
             <h2 id="question-payload-lbl">Fetching generation variables...</h2>
 
-            <div class="options-stack" id="options-box">
-                </div>
+            <div class="options-stack" id="options-box"></div>
             <p id="status-lbl">Analyze the variables carefully...</p>
         </div>
 
     </div>
 
     <script>
-        // LIVE PRODUCTION ENDPOINTS CONNECTED
+        // Cleaned base URL string to guarantee cross-browser parsing compatibility
         const SUPABASE_URL = "https://dwjgilfxstogojdepbdh.supabase.co";
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3amdpbGZ4c3RvZ29qZGVwYmRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIzNjE3MjQsImV4cCI6MjA1NzkzNzcyNH0.b04rF5q8wZf6p9_rU4-Dby735h_C6b62P4vR0E6_3mE";
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        let supabase;
+        try {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+                auth: { persistSession: false }
+            });
+        } catch (e) {
+            alert("Initialization failure: Check if your network blocks Supabase CDNs.");
+        }
 
         let currentRoom = null;
         let myRole = null;
@@ -116,32 +123,57 @@
         async function joinRoom(role) {
             const roomCode = document.getElementById('room-code-input').value.trim();
             currentDifficulty = document.getElementById('difficulty-select').value;
-            if(!roomCode) return alert("Allocation code mandatory.");
+            if(!roomCode) return alert("Allocation room code code mandatory.");
+            
             myRole = role;
+            document.getElementById('btn-p1').innerText = "Connecting Data Pipeline...";
+            document.getElementById('btn-p2').style.display = "none";
 
-            if(role === 'player1') {
-                await supabase.from('game_rooms').delete().eq('room_code', roomCode);
-                await supabase.from('game_rooms').insert([{ 
-                    room_code: roomCode, 
-                    player_1_score: 0, 
-                    player_2_score: 0, 
-                    current_question: 0,
-                    difficulty_tier: currentDifficulty
-                }]);
+            try {
+                if(role === 'player1') {
+                    // Force-clear prior broken instances of the exact code
+                    await supabase.from('game_rooms').delete().eq('room_code', roomCode);
+                    
+                    const { error } = await supabase.from('game_rooms').insert([{ 
+                        room_code: roomCode, 
+                        player_1_score: 0, 
+                        player_2_score: 0, 
+                        current_question: 0,
+                        difficulty_tier: currentDifficulty
+                    }]);
+                    
+                    if(error) throw error;
+                }
+
+                currentRoom = roomCode;
+                switchActiveView('game-view');
+                document.getElementById('room-identity-lbl').innerText = roomCode.toUpperCase();
+                document.getElementById('diff-tag').innerText = currentDifficulty;
+
+                // Dedicated real-time tracking engine
+                supabase.channel(`room-${roomCode}`)
+                .on('postgres_changes', { 
+                    event: 'UPDATE', 
+                    schema: 'public', 
+                    table: 'game_rooms', 
+                    filter: `room_code=eq.${roomCode}` 
+                }, payload => {
+                    if(payload && payload.new) {
+                        updateGameState(payload.new);
+                    }
+                })
+                .subscribe((status) => {
+                    if(status === 'CHANNEL_ERROR') {
+                        alert("Realtime synchronization blocked by local network profile.");
+                    }
+                });
+
+                renderActiveQuestion(0);
+            } catch (err) {
+                alert("Network Core Rejection: Verify Row-Level Security (RLS) is disabled on Supabase dashboard.");
+                document.getElementById('btn-p1').innerText = "Create Room as Player 1";
+                document.getElementById('btn-p2').style.display = "block";
             }
-
-            currentRoom = roomCode;
-            switchActiveView('game-view');
-            document.getElementById('room-identity-lbl').innerText = roomCode.toUpperCase();
-            document.getElementById('diff-tag').innerText = currentDifficulty;
-
-            supabase.channel('room-sync')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `room_code=eq.${roomCode}` }, payload => {
-                updateGameState(payload.new);
-            })
-            .subscribe();
-
-            renderActiveQuestion(0);
         }
 
         function updateGameState(data) {
@@ -155,7 +187,7 @@
             if(index >= pool.length) {
                 document.getElementById('question-payload-lbl').innerText = "Matrix Duel Complete.";
                 document.getElementById('options-box').innerHTML = "";
-                document.getElementById('status-lbl').innerText = "Final standings updated on database container.";
+                document.getElementById('status-lbl').innerText = "Final standings completely synchronized.";
                 return;
             }
 
@@ -172,6 +204,7 @@
                 btn.onclick = () => evaluationSelection(idx, activeQ.c, index);
                 targetBox.appendChild(btn);
             });
+            document.getElementById('status-lbl').innerText = "Awaiting real-time submission parameters...";
         }
 
         async function evaluationSelection(selected, correct, qIndex) {
@@ -179,19 +212,25 @@
             let updatePayload = {};
 
             document.getElementById('options-box').innerHTML = "";
-            document.getElementById('status-lbl').innerText = "Processing live answer calculation...";
+            document.getElementById('status-lbl').innerText = "Processing live calculations...";
 
-            if(isCorrect) {
-                const { data } = await supabase.from('game_rooms').select().eq('room_code', currentRoom).single();
-                if(myRole === 'player1') {
-                    updatePayload.player_1_score = data.player_1_score + 10;
-                } else {
-                    updatePayload.player_2_score = data.player_2_score + 10;
+            try {
+                if(isCorrect) {
+                    const { data, error } = await supabase.from('game_rooms').select().eq('room_code', currentRoom).single();
+                    if(error) throw error;
+                    
+                    if(myRole === 'player1') {
+                        updatePayload.player_1_score = parseInt(data.player_1_score || 0) + 10;
+                    } else {
+                        updatePayload.player_2_score = parseInt(data.player_2_score || 0) + 10;
+                    }
                 }
+                
+                updatePayload.current_question = qIndex + 1;
+                await supabase.from('game_rooms').update(updatePayload).eq('room_code', currentRoom);
+            } catch(e) {
+                alert("Error submitting score tracking update.");
             }
-            
-            updatePayload.current_question = qIndex + 1;
-            await supabase.from('game_rooms').update(updatePayload).eq('room_code', currentRoom);
         }
 
         function switchActiveView(id) {
