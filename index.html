@@ -3,147 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multiplayer IQ Matrix</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>Realtime Multiplayer IQ Duel</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --accent: #38bdf8;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --text: #f8fafc;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .setup-box, .game-box {
+            background: var(--surface);
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .game-box { display: none; }
+        h1 { font-size: 24px; margin-bottom: 15px; text-align: center; color: var(--accent); }
+        input, button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 12px;
+            border-radius: 10px;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        input { background: #334155; color: white; text-align: center; }
+        button { background: var(--accent); color: #020617; cursor: pointer; transition: 0.2s; }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        .score-board {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #334155;
+        }
+        .options-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 20px; }
+        .option-btn { background: #334155; color: white; text-align: left; }
+        .option-btn:hover { background: #475569; }
+        #status-msg { margin-top: 15px; text-align: center; font-style: italic; color: #94a3b8; }
+    </style>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
-<body class="bg-slate-900 text-white min-h-screen">
+<body>
 
-    <div id="root"></div>
+    <div id="setup-screen" class="setup-box">
+        <h1>IQ Multiplayer Duel</h1>
+        <p style="text-align: center; color: #94a3b8; font-size: 14px;">Create or join a room code to play live with a friend.</p>
+        <input type="text" id="room-input" placeholder="Enter Room Code (e.g., IQ99)">
+        <button id="start-btn" onclick="initConnection()">Connect & Start Game</button>
+    </div>
 
-    <script type="text/babel">
-        const PUZZLES = [
-          {
-            id: 1,
-            question: "Complete the logical sequence: 2, 6, 12, 20, 30, ?",
-            options: ["36", "40", "42", "46"],
-            correct: "42"
-          },
-          {
-            id: 2,
-            question: "Which shape completes the rule: Matrix rotates 90° clockwise each step. If step 3 points Left, step 4 points...",
-            options: ["Up", "Down", "Right", "Left"],
-            correct: "Up"
-          },
-          {
-            id: 3,
-            question: "If Every Bleep is a Bloop, and Half of Bloops are Blips, are all Bleeps definitely Blips?",
-            options: ["Yes, absolutely", "No, not necessarily", "Never", "Depends on the day"],
-            correct: "No, not necessarily"
-          }
+    <div id="game-screen" class="game-box">
+        <div class="score-board">
+            <div>You: <span id="my-score">0</span></div>
+            <div>Opponent: <span id="opp-score">0</span></div>
+        </div>
+        <h2 id="question-text">Loading IQ Question...</h2>
+        <div class="options-grid" id="options-container">
+            </div>
+        <p id="status-msg">Waiting for opponent to connect...</p>
+    </div>
+
+    <script>
+        let peer = null;
+        let conn = null;
+        let myScore = 0;
+        let oppScore = 0;
+        let currentQuestionIndex = 0;
+
+        const questions = [
+            { q: "If all Bloops are Razzies and all Razzies are Lallos, are all Bloops definitely Lallos?", a: ["Yes", "No", "Cannot be determined"], correct: 0 },
+            { q: "Which number comes next in the logic sequence: 2, 4, 8, 16, ...?", a: ["20", "24", "32", "64"], correct: 2 },
+            { q: "A bat and ball cost ₹110 in total. The bat costs ₹100 more than the ball. How much does the ball cost?", a: ["₹10", "₹5", "₹0", "₹55"], correct: 1 }
         ];
 
-        function MultiplayerIQGame() {
-          const [roomCode, setRoomCode] = React.useState('');
-          const [playerName, setPlayerName] = React.useState('');
-          const [isJoined, setIsJoined] = React.useState(false);
-          const [players, setPlayers] = React.useState({}); 
-          const [currentPuzzleIdx, setCurrentPuzzleIdx] = React.useState(0);
-          const [winnerMessage, setWinnerMessage] = React.useState('');
-          const ws = React.useRef(null);
+        function initConnection() {
+            const roomId = document.getElementById('room-input').value.trim();
+            if(!roomId) return alert("Please type a room code!");
 
-          const joinRoom = (e) => {
-            e.preventDefault();
-            if (!roomCode || !playerName) return alert("Fill in Room Code and Name!");
+            document.getElementById('start-btn').innerText = "Connecting...";
 
-            const cleanRoom = roomCode.trim().toLowerCase();
-            const socketUrl = `wss://iq-game-sync.karunakar.partykit.dev/parties/main/${cleanRoom}`;
-            
-            ws.current = new WebSocket(socketUrl);
+            // Connect to a free, public cloud signaling engine
+            peer = new Peer(roomId + '-player-' + Math.floor(Math.random()*1000));
 
-            ws.current.onopen = () => {
-              setIsJoined(true);
-              sendMessage({ type: 'JOIN', name: playerName });
-            };
+            peer.on('open', (id) => {
+                // Try connecting to the companion player slot in that room
+                let targets = [roomId + '-player-1', roomId + '-player-2'];
+                let target = targets.find(t => t !== id);
+                
+                conn = peer.connect(roomId);
+                
+                // Set up incoming hooks if someone connects to us
+                peer.on('connection', (incomingConn) => {
+                    conn = incomingConn;
+                    setupReceiver();
+                });
 
-            ws.current.onmessage = (event) => {
-              const data = JSON.parse(event.data);
-              if (data.type === 'STATE_UPDATE') {
-                setPlayers(data.players);
-                setCurrentPuzzleIdx(data.currentPuzzleIdx);
-                if (data.winner) {
-                  setWinnerMessage(`${data.winner} got the last one right!`);
-                  setTimeout(() => setWinnerMessage(''), 3000);
-                }
-              }
-            };
-          };
-
-          const sendMessage = (msg) => {
-            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-              ws.current.send(JSON.stringify(msg));
-            }
-          };
-
-          const handleAnswerSubmit = (selectedOption) => {
-            const currentPuzzle = PUZZLES[currentPuzzleIdx];
-            if (selectedOption === currentPuzzle.correct) {
-              sendMessage({
-                type: 'SCORE_POINT',
-                name: playerName,
-                nextPuzzleIdx: (currentPuzzleIdx + 1) % PUZZLES.length
-              });
-            } else {
-              alert("Wrong answer!");
-            }
-          };
-
-          if (!isJoined) {
-            return (
-              <div class="min-h-screen flex flex-col items-center justify-center p-4 bg-slate-900">
-                <div class="max-w-md w-full bg-slate-800 p-8 rounded-xl shadow-2xl border border-slate-700">
-                  <h1 class="text-3xl font-black text-center text-indigo-400 mb-2">🧠 IQ MATRIX</h1>
-                  <p class="text-slate-400 text-sm text-center mb-6">Real-time competitive multiplayer logic race.</p>
-                  <form onSubmit={joinRoom} class="space-y-4">
-                    <div>
-                      <label class="block text-xs font-bold text-slate-400 mb-1">YOUR NAME</label>
-                      <input type="text" value={playerName} onChange={(e) => setPlayerName(e.target.value)} class="w-full bg-slate-950 border border-slate-700 rounded p-2.5 text-white" required />
-                    </div>
-                    <div>
-                      <label class="block text-xs font-bold text-slate-400 mb-1">ROOM CODE</label>
-                      <input type="text" value={roomCode} onChange={(e) => setRoomCode(e.target.value)} class="w-full bg-slate-950 border border-slate-700 rounded p-2.5 text-white uppercase" required />
-                    </div>
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 font-bold py-3 px-4 rounded transition-all">Enter Game Lobby</button>
-                  </form>
-                </div>
-              </div>
-            );
-          }
-
-          const activePuzzle = PUZZLES[currentPuzzleIdx];
-
-          return (
-            <div class="min-h-screen p-4 md:p-8 grid grid-cols-1 lg:grid-cols-4 gap-6 bg-slate-900">
-              <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 h-fit">
-                <h2 class="text-xl font-bold border-b border-slate-700 pb-3 text-indigo-400">👥 Room: {roomCode.toUpperCase()}</h2>
-                <div class="mt-4 space-y-2">
-                  {Object.entries(players).map(([name, score]) => (
-                    <div key={name} class={`flex justify-between p-2.5 rounded text-sm ${name === playerName ? 'bg-indigo-600/20 border border-indigo-500' : 'bg-slate-950'}`}>
-                      <span>{name}</span>
-                      <span class="bg-indigo-900 px-2 rounded-full text-xs">{score} pts</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div class="lg:col-span-3 bg-slate-800 p-6 md:p-8 rounded-xl border border-slate-700 relative">
-                {winnerMessage && <div class="absolute top-0 left-0 right-0 bg-emerald-600 text-center py-2 text-xs font-bold">{winnerMessage}</div>}
-                <div class="max-w-2xl mx-auto w-full py-6">
-                  <h3 class="text-xl md:text-2xl font-medium mt-4 text-slate-100">{activePuzzle.question}</h3>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
-                    {activePuzzle.options.map((option, i) => (
-                      <button key={i} onClick={() => handleAnswerSubmit(option)} class="w-full bg-slate-950 hover:bg-slate-700 border border-slate-700 rounded-lg p-4 text-left transition-all">{option}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
+                if(conn) setupReceiver();
+                
+                // Force reveal game board
+                document.getElementById('setup-screen').style.display = 'none';
+                document.getElementById('game-screen').style.display = 'block';
+                loadQuestion();
+            });
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<MultiplayerIQGame />);
+        function setupReceiver() {
+            conn.on('data', (data) => {
+                if(data.type === 'ANSWERED') {
+                    if(data.isCorrect) {
+                        oppScore += 10;
+                        document.getElementById('opp-score').innerText = oppScore;
+                        document.getElementById('status-msg').innerText = "Opponent got it right! Moving on...";
+                    } else {
+                        document.getElementById('status-msg').innerText = "Opponent guessed wrong!";
+                    }
+                    setTimeout(nextQuestion, 2000);
+                }
+            });
+        }
+
+        function loadQuestion() {
+            if(currentQuestionIndex >= questions.length) {
+                document.getElementById('question-text').innerText = "Game Over!";
+                document.getElementById('options-container').innerHTML = "";
+                document.getElementById('status-msg').innerText = myScore > oppScore ? "You win the IQ duel!" : "Opponent wins!";
+                return;
+            }
+
+            let currentQ = questions[currentQuestionIndex];
+            document.getElementById('question-text').innerText = currentQ.q;
+            
+            let container = document.getElementById('options-container');
+            container.innerHTML = "";
+            document.getElementById('status-msg').innerText = "Analyze quickly...";
+
+            currentQ.a.forEach((option, index) => {
+                let btn = document.createElement('button');
+                btn.className = 'option-btn';
+                btn.innerText = option;
+                btn.onclick = () => submitAnswer(index);
+                container.appendChild(btn);
+            });
+        }
+
+        function submitAnswer(selectedIndex) {
+            let currentQ = questions[currentQuestionIndex];
+            let isCorrect = (selectedIndex === currentQ.correct);
+
+            if(isCorrect) {
+                myScore += 10;
+                document.getElementById('my-score').innerText = myScore;
+                document.getElementById('status-msg').innerText = "Correct! Points secured.";
+            } else {
+                document.getElementById('status-msg').innerText = "Incorrect choice.";
+            }
+
+            // Send data packet over WebSockets to opponent screen instantly
+            if(conn && conn.open) {
+                conn.send({ type: 'ANSWERED', isCorrect: isCorrect });
+            }
+
+            setTimeout(nextQuestion, 2000);
+        }
+
+        function nextQuestion() {
+            currentQuestionIndex++;
+            loadQuestion();
+        }
     </script>
 </body>
 </html>
